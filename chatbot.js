@@ -5,7 +5,6 @@ define([
 ], function($, qlik, cssContent) {
     'use strict';
 
-    // Add CSS to the document
     $("<style>").html(cssContent).appendTo("head");
 
     return {
@@ -41,6 +40,12 @@ define([
                                     label: "AI Model Name",
                                     type: "string",
                                     defaultValue: "default-model"
+                                },
+                                objectIds: {
+                                    ref: "props.objectIds",
+                                    label: "QlikSense Object IDs (comma-separated)",
+                                    type: "string",
+                                    defaultValue: "obj01,obj02"
                                 },
                                 prePrompt: {
                                     ref: "props.prePrompt",
@@ -87,10 +92,33 @@ define([
                 return new Promise((resolve, reject) => {
                     app.getObject(objectId).then(function(model) {
                         model.getLayout().then(function(layout) {
-                            resolve(layout);
+                            resolve({
+                                objectId: objectId,
+                                data: layout
+                            });
                         });
-                    }).catch(reject);
+                    }).catch(error => {
+                        console.error(`Error fetching object ${objectId}:`, error);
+                        resolve({
+                            objectId: objectId,
+                            error: `Failed to fetch object ${objectId}`
+                        });
+                    });
                 });
+            }
+
+            // Get data from specified object IDs
+            async function getAllObjectsData() {
+                const objectIds = layout.props.objectIds.split(',').map(id => id.trim());
+                const objectDataPromises = objectIds.map(objectId => getObjectData(objectId));
+                
+                try {
+                    const results = await Promise.all(objectDataPromises);
+                    return results.filter(result => !result.error);
+                } catch (error) {
+                    console.error('Error fetching objects:', error);
+                    return [];
+                }
             }
 
             // Send message to AI
@@ -151,14 +179,34 @@ define([
                 addMessage(userInput, true);
                 $('#userInput').val('');
 
-                // Get data from all visible charts
-                const visibleObjects = app.getList('CurrentSelections');
-                const qlikData = await Promise.all(
-                    visibleObjects.map(obj => getObjectData(obj.objectId))
-                );
+                // Loading indicator
+                addMessage('Loading...', false);
 
-                const aiResponse = await sendToAI(userInput, qlikData);
-                addMessage(aiResponse.content);
+                try {
+                    // Get data from specified QlikSense objects
+                    const qlikData = await getAllObjectsData();
+                    
+                    if (qlikData.length === 0) {
+                        $('#chatMessages').children().last().remove(); // Remove loading message
+                        addMessage('No data available. Please check the object IDs configuration.');
+                        return;
+                    }
+
+                    const aiResponse = await sendToAI(userInput, qlikData);
+                    
+                    // Remove loading message
+                    $('#chatMessages').children().last().remove();
+                    
+                    if (aiResponse.error) {
+                        addMessage('Sorry, I encountered an error while processing your request.');
+                    } else {
+                        addMessage(aiResponse.content);
+                    }
+                } catch (error) {
+                    $('#chatMessages').children().last().remove(); // Remove loading message
+                    addMessage('An error occurred while processing your request.');
+                    console.error('Error:', error);
+                }
             });
 
             $('#speakButton').click(function() {
