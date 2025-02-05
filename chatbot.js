@@ -1,8 +1,9 @@
 define([
     'jquery',
     'qlik',
-    'text!./style.css'
-], function($, qlik, cssContent) {
+    'text!./style.css',
+    'chart.js/auto'
+], function($, qlik, cssContent, Chart) {
     'use strict';
 
     $("<style>").html(cssContent).appendTo("head");
@@ -46,12 +47,6 @@ define([
                                     label: "QlikSense Object IDs (comma-separated)",
                                     type: "string",
                                     defaultValue: "obj01,obj02"
-                                },
-                                prePrompt: {
-                                    ref: "props.prePrompt",
-                                    label: "Default Context",
-                                    type: "string",
-                                    defaultValue: "Analyze the following Qlik data"
                                 }
                             }
                         }
@@ -66,8 +61,11 @@ define([
             const container = `
                 <div class="ai-chatbot-container">
                     <div class="chat-messages" id="chatMessages"></div>
+                    <div class="chart-container" id="chartContainer" style="display: none;">
+                        <canvas id="chartCanvas"></canvas>
+                    </div>
                     <div class="input-container">
-                        <textarea id="userInput" placeholder="Ask a question about your data..."></textarea>
+                        <textarea id="userInput" placeholder="Ask questions about your data or request specific visualizations..."></textarea>
                         <div class="button-container">
                             <button id="sendButton" class="primary-button">Send</button>
                             <button id="speakButton" class="secondary-button">
@@ -82,6 +80,8 @@ define([
             `;
             
             $element.html(container);
+
+            let currentChart = null;
 
             // Initialize Text-to-Speech
             const speechSynthesis = window.speechSynthesis;
@@ -121,13 +121,38 @@ define([
                 }
             }
 
+            // Create chart from AI response
+            function createChart(chartData) {
+                const chartContainer = $('#chartContainer');
+                const canvas = $('#chartCanvas');
+                
+                // Destroy existing chart if any
+                if (currentChart) {
+                    currentChart.destroy();
+                }
+
+                // Show chart container
+                chartContainer.show();
+
+                // Create new chart
+                currentChart = new Chart(canvas[0], chartData);
+            }
+
             // Send message to AI
             async function sendToAI(userQuery, qlikData) {
+                const prePrompt = `Act as a data analyst. Analyze the provided data and respond to the query. 
+                If the query requests a visualization, provide a Chart.js configuration object with the appropriate chart type. 
+                Format your response as JSON with the following structure:
+                {
+                    "response": "Your analysis text here",
+                    "chart": null or Chart.js configuration object
+                }`;
+
                 const payload = {
                     model: layout.props.model,
                     messages: [{
                         role: "user",
-                        content: `prepromp:${layout.props.prePrompt} data:${JSON.stringify(qlikData)} query:${userQuery}`
+                        content: `${prePrompt} data:${JSON.stringify(qlikData)} query:${userQuery}`
                     }]
                 };
 
@@ -180,14 +205,13 @@ define([
                 $('#userInput').val('');
 
                 // Loading indicator
-                addMessage('Loading...', false);
+                addMessage('Analyzing your request...', false);
 
                 try {
-                    // Get data from specified QlikSense objects
                     const qlikData = await getAllObjectsData();
                     
                     if (qlikData.length === 0) {
-                        $('#chatMessages').children().last().remove(); // Remove loading message
+                        $('#chatMessages').children().last().remove();
                         addMessage('No data available. Please check the object IDs configuration.');
                         return;
                     }
@@ -200,10 +224,16 @@ define([
                     if (aiResponse.error) {
                         addMessage('Sorry, I encountered an error while processing your request.');
                     } else {
-                        addMessage(aiResponse.content);
+                        // Add the analysis text
+                        addMessage(aiResponse.response);
+
+                        // If chart configuration is provided, create the chart
+                        if (aiResponse.chart) {
+                            createChart(aiResponse.chart);
+                        }
                     }
                 } catch (error) {
-                    $('#chatMessages').children().last().remove(); // Remove loading message
+                    $('#chatMessages').children().last().remove();
                     addMessage('An error occurred while processing your request.');
                     console.error('Error:', error);
                 }
