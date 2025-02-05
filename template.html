@@ -1,0 +1,45 @@
+<div class="qv-extension-ai-chatbot">
+    <div class="chat-container" qv-extension>
+        <div class="control-panel">
+            <button ng-click="toggleVoiceInput()" class="control-btn">
+                <i class="lui-icon lui-icon--mic"></i>
+            </button>
+            <button ng-click="toggleSpeech()" class="control-btn" ng-class="{'active': speechEnabled}">
+                <i class="lui-icon lui-icon--speaker"></i>
+            </button>
+            <div class="selected-objects">
+                Selected Charts: {{selectedObjects.length}}
+                <button ng-click="clearSelectedObjects()" class="clear-btn">Clear</button>
+            </div>
+        </div>
+        
+        <div class="chat-messages" id="chatMessages">
+            <div ng-repeat="message in messages track by $index" 
+                 ng-class="{'user-message': message.type === 'user', 'bot-message': message.type === 'bot'}">
+                <div class="message-header">
+                    <span class="message-time">{{message.timestamp | date:'HH:mm'}}</span>
+                    <div class="message-actions" ng-if="message.type === 'bot'">
+                        <button ng-click="copyToClipboard(message.text)" class="action-btn">
+                            <i class="lui-icon lui-icon--copy"></i>
+                        </button>
+                        <button ng-click="speakMessage(message.text)" class="action-btn">
+                            <i class="lui-icon lui-icon--speaker"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="message-content">{{message.text}}</div>
+                <div ng-if="message.chartId" class="chart-container" id="{{message.chartId}}"></div>
+            </div>
+        </div>
+
+        <div class="chat-input">
+            <input type="text" 
+                   ng-model="userInput" 
+                   ng-keypress="handleKeyPress($event)"
+                   placeholder="Ask about your data or request visualizations...">
+            <button ng-click="sendMessage()" class="send-btn">
+                <i class="lui-icon lui-icon--send"></i>
+            </button>
+        </div>
+    </div>
+</div>
